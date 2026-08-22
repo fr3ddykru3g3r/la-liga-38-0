@@ -8,13 +8,31 @@ const modeInfo = {
   archive: ['Open Archive','Every club and era. Build the strongest XI the dial gives you.','◎'],
   club: ['Club Chronicle','Choose one club and draft only from its Spanish top-flight story.','⌂'],
   daily: ['Daily Draft','One shared seed each day. One attempt. Compare fairly.','◇'],
+  ranked: ['Ranked Run','Server-issued draws, server simulation, signed result and leaderboard eligibility.','★'],
   blind: ['Blind Scout','Season ratings stay hidden until your XI is locked.','◉'],
   duel: ['Head-to-Head','A live room, the same draws, two independent XIs.','↔'],
   atlas: ['Ratings Atlas','Explore season, Prime, and independent legacy ratings.','▦']
+  ,method: ['Method & Sources','See rating evidence, probability logic, calibration limits and ranked integrity.','≋']
 };
-const fresh = () => ({ screen:'home', mode:'archive', formation:'4-3-3', ratingMode:'season', difficulty:'normal', club:'Barcelona', minYear:1990, lineup:[], offer:null, turn:0, rerolls:1, result:null, seed:String(Date.now()), toast:'', selectedPlayer:null });
+const fresh = () => ({ screen:'home', mode:'archive', formation:'4-3-3', ratingMode:'season', difficulty:'normal', club:'Barcelona', minYear:1990, lineup:[], offer:null, turn:0, rerolls:1, result:null, seed:String(Date.now()), toast:'', selectedPlayer:null, serverRun:null, verified:false, trophies:[] });
 let state = fresh();
 let roomState = { code:'', peers:[], connected:false, name:'Manager', progress:{}, send:null, leave:null, role:'host' };
+
+async function api(path, options={}){
+  const response=await fetch(path,{...options,headers:{'content-type':'application/json',...(options.headers||{})}});
+  const payload=await response.json().catch(()=>({error:{message:'Invalid server response.'}}));
+  if(!response.ok)throw new Error(payload.error?.message||`Request failed (${response.status})`);
+  return payload;
+}
+
+function applyServerRun(run){
+  state.serverRun=run;
+  state.lineup=(run.picks||[]).map(p=>({slot:p.slot,slotIndex:p.slotIndex,player:p.card}));
+  state.offer=run.offer?{club:run.offer.club,season:run.offer.season,players:run.offer.cards,poolSize:run.offer.poolSize}:null;
+  state.turn=run.turn||0;
+  state.screen=state.lineup.length===11?'review':'draft';
+  save();render();
+}
 
 function save(){
   const safe = {...state, offer:null, selectedPlayer:null, toast:''};
@@ -25,12 +43,14 @@ function setState(patch){ state={...state,...patch}; save(); render(); }
 function announce(message){ state.toast=message; render(); window.setTimeout(()=>{state.toast='';render()},2200); }
 
 function chrome(content){
+  if(state.verified)content=content.replace('Seeded result','✓ Server-verified result');
   content = content
     .replaceAll('Jornada dial', 'Matchday dial')
     .replaceAll('38 jornadas', '38 matches')
     .replaceAll('Simulate 38 jornadas', 'Simulate 38 matches')
-    .replaceAll('38-jornada ledger', '38-match ledger');
-  return `<div class="shell"><header class="topbar"><button class="brand" data-action="home" aria-label="La Liga XI home"><span class="brand-mark">XI</span><span class="brand-text display">LA LIGA XI<small>UNOFFICIAL ALL-TIME DRAFT</small></span></button><nav class="top-actions" aria-label="Primary"><button class="nav-button" data-action="atlas">Ratings atlas</button><button class="nav-button" data-action="modes">Play</button></nav></header>${content}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:''}${state.selectedPlayer?drawer(state.selectedPlayer):''}</div>`;
+    .replaceAll('38-jornada ledger', '38-match ledger')
+    .replaceAll('SIX WAYS IN.', 'WAYS TO PLAY.');
+  return `<div class="shell"><header class="topbar"><button class="brand" data-action="home" aria-label="La Liga XI home"><span class="brand-mark">XI</span><span class="brand-text display">LA LIGA XI<small>UNOFFICIAL ALL-TIME DRAFT</small></span></button><nav class="top-actions" aria-label="Primary"><button class="nav-button" data-action="leaderboard">Leaderboard</button><button class="nav-button" data-action="profile">Cabinet</button><button class="nav-button" data-action="atlas">Ratings atlas</button><button class="nav-button" data-action="modes">Play</button></nav></header>${content}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:''}${state.selectedPlayer?drawer(state.selectedPlayer):''}</div>`;
 }
 
 function home(){
@@ -59,13 +79,23 @@ function currentCandidates(){
   if(!state.offer)return[]; const ids=state.lineup.map(p=>p.player.playerId); const slots=openSlots();
   return state.offer.players.filter(p=>slots.some(slot=>eligibleForSlot(p,slot,ids))).sort((a,b)=>(state.ratingMode==='prime'?b.prime-a.prime:b.rating-a.rating));
 }
-function spin(){
+async function spin(){
+  if(state.mode==='ranked'){
+    try{const payload=await api(`/api/v1/runs/${state.serverRun.id}/spin`,{method:'POST',body:JSON.stringify({expectedVersion:state.serverRun.version})});applyServerRun(payload.run);}
+    catch(error){announce(error.message)}
+    return;
+  }
   const random=rngFrom(`${state.seed}|spin|${state.turn}|${state.rerolls}`); const spun=spinClubSeason(players,openSlots(),state.lineup.map(p=>p.player.playerId),filters(),random);
   if(!spun)return announce('No legal club-seasons remain for this rule set.');
   state.offer={...spun.result,poolSize:spun.poolSize}; state.turn++; save(); render();
   requestAnimationFrame(()=>document.querySelector('.round-dial')?.classList.add('spinning'));
 }
-function choosePlayer(id){
+async function choosePlayer(id){
+  if(state.mode==='ranked'){
+    try{const payload=await api(`/api/v1/runs/${state.serverRun.id}/pick`,{method:'POST',body:JSON.stringify({expectedVersion:state.serverRun.version,cardId:id})});applyServerRun(payload.run);}
+    catch(error){announce(error.message)}
+    return;
+  }
   const player=currentCandidates().find(p=>p.id===id); if(!player)return;
   const remaining=openSlotEntries().map(entry=>({...entry,score:effectiveRating(player,entry.slot,state.ratingMode)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
   if(!remaining.length)return announce('That player cannot fill a remaining slot.');
@@ -89,7 +119,14 @@ function review(){
   const lines=teamLines(state.lineup,state.ratingMode), band=expectedPointsBand(lines);
   return chrome(`<main class="page"><div class="section-head"><div><p class="eyebrow">XI locked · forecast ${band[0]}–${band[1]} points</p><h1 class="display">THE TEAM SHEET.</h1></div><button class="ghost" data-action="restart">Discard XI</button></div><div class="setup-layout"><section class="panel"><div class="pitch">${formationSlots(state.formation).map(slot=>{const p=state.lineup.find(x=>x.slotIndex===slot.index);return `<button class="pitch-slot filled" data-player="${p.player.id}" style="left:${slot.x}%;top:${slot.y}%"><span><b>${esc(p.player.name)}</b><small>${p.slot} · ${effectiveRating(p.player,p.slot,state.ratingMode)}</small></span></button>`}).join('')}</div></section><aside class="panel"><div class="panel-body"><div class="panel-title">Independent strength model</div><div class="rules">${Object.entries(lines).map(([k,v])=>`<div class="rule"><span>${esc(k)}</span><b>${Math.round(v)}</b></div>`).join('')}</div><p class="method-note">The forecast is a range, not a promise. Ratings, positional fit, line balance, home advantage, opponent profiles and seeded Poisson scorelines all affect the run.</p><button class="primary big-spin" data-action="simulate">Simulate 38 jornadas</button></div></aside></div></main>`);
 }
-function doSimulate(){ const seed=state.mode==='daily'?new Date().toISOString().slice(0,10):`${state.seed}|season|${Date.now()}`; state.result=simulateSeason(state.lineup,state.ratingMode,seed);state.screen='result';save();render();if(roomState.send)roomState.send({type:'result',name:roomState.name,points:state.result.points,record:`${state.result.wins}-${state.result.draws}-${state.result.losses}`}); }
+async function doSimulate(){
+  if(state.mode==='ranked'){
+    try{const payload=await api(`/api/v1/runs/${state.serverRun.id}/lock`,{method:'POST',body:JSON.stringify({expectedVersion:state.serverRun.version})});const cosmetic=simulateSeason(state.lineup,state.ratingMode,payload.result.seed);state.result={...cosmetic,...payload.result,goldenBoot:cosmetic.goldenBoot,playerOfSeason:cosmetic.playerOfSeason};state.verified=true;state.trophies=payload.trophies||[];state.screen='result';save();render();}
+    catch(error){announce(error.message)}
+    return;
+  }
+  const seed=state.mode==='daily'?new Date().toISOString().slice(0,10):`${state.seed}|season|${Date.now()}`; state.result=simulateSeason(state.lineup,state.ratingMode,seed);state.screen='result';save();render();if(roomState.send)roomState.send({type:'result',name:roomState.name,points:state.result.points,record:`${state.result.wins}-${state.result.draws}-${state.result.losses}`});
+}
 function result(){
   const r=state.result; return chrome(`<main class="page"><div class="section-head"><div><p class="eyebrow">Seeded result · ${esc(state.formation)} · ${esc(state.ratingMode)}</p><h1 class="display">SEASON COMPLETE.</h1></div></div><div class="result-hero"><section class="scoreboard"><div class="record display">${r.wins}-${r.draws}-${r.losses}</div><div class="points">${r.points} / 114 POINTS</div><div class="scoreboard-grid"><div><b>${r.finish}${r.finish===1?'st':r.finish===2?'nd':r.finish===3?'rd':'th'}</b><span>finish</span></div><div><b>${r.goalsFor}</b><span>goals for</span></div><div><b>${r.goalsAgainst}</b><span>against</span></div><div><b>${Math.round(r.lines.overall)}</b><span>overall</span></div><div><b>${Math.round(r.lines.balance)}</b><span>balance</span></div><div><b>${r.seed.slice(-8)}</b><span>seed proof</span></div></div></section><aside class="panel"><div class="panel-body"><div class="panel-title">38-jornada ledger</div><div class="timeline">${r.matches.map(m=>`<button class="match ${m.result}" title="J${m.jornada}: ${m.goalsFor}-${m.goalsAgainst} vs ${m.opponent}">${m.result}</button>`).join('')}</div><div class="awards"><div class="award"><span>Golden Boot</span><b>${esc(r.goldenBoot.player.name)}</b><p>${r.goldenBoot.goals} goals</p></div><div class="award"><span>Player of season</span><b>${esc(r.playerOfSeason.player.name)}</b><p>${r.playerOfSeason.goals}G · ${r.playerOfSeason.assists}A</p></div></div><div class="result-actions"><button class="primary" data-action="share">Copy result</button><button class="ghost" data-action="restart">Draft again</button><button class="ghost" data-action="home">Home</button></div></div></aside></div></main>`);
 }
@@ -101,6 +138,24 @@ function atlas(){
 function drawer(p){
   const history=players.filter(x=>x.playerId===p.playerId).sort((a,b)=>a.season.localeCompare(b.season));
   return `<div class="drawer-backdrop" data-action="close-drawer"><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="player-title"><button class="drawer-close" data-action="close-drawer" aria-label="Close">×</button><p class="eyebrow">Player rating dossier</p><h2 id="player-title" class="display">${esc(p.name)}</h2><p>${p.positions.join(' · ')} · Prime ${p.prime} · Legacy ${legacyRating(p.playerId,players)}</p><div class="history">${history.map(h=>`<div class="history-row"><b>${esc(h.club)}</b><span>${h.season}</span><strong>${h.rating}</strong></div>`).join('')}</div><div class="method-note"><b>How to read this</b><p>Season rating describes that club campaign. Prime is the highest independent rating attached to the player. Legacy is 70% peak, 20% next-best and 10% third-best available card. Sparse history falls back to the known card and is labelled as an editorial estimate.</p></div></aside></div>`;
+}
+
+let leaderboardData=null,profileData=null,remoteError='';
+function leaderboardScreen(){
+  const rows=leaderboardData?.entries||[];
+  return chrome(`<main class="page"><div class="section-head"><div><p class="eyebrow">Ranked runs only · server-verified</p><h1 class="display">LEADERBOARD.</h1></div><p>Ordered by points, wins, goal difference, then earliest completion. Browser-submitted scores never enter this table.</p></div>${remoteError?`<div class="panel"><div class="panel-body">${esc(remoteError)}</div></div>`:!leaderboardData?`<div class="empty-dossier"><b>Loading verified runs…</b></div>`:`<div class="atlas-wrap"><table class="atlas-table"><thead><tr><th>Rank</th><th>Manager</th><th>Result</th><th>XI</th><th>Rules</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><b>${i+1}</b></td><td>${esc(r.display_name||'Manager')} <span class="verified">✓ server</span></td><td><b>${r.points}</b> pts · ${r.wins}-${r.draws}-${r.losses} · ${r.goal_difference>0?'+':''}${r.goal_difference}</td><td>${r.xi_rating}</td><td>${esc(r.formation)} · ${esc(r.rating_mode)}</td></tr>`).join('')||`<tr><td colspan="5">No verified seasons yet. The first ranked run sets the board.</td></tr>`}</tbody></table></div>`}</main>`);
+}
+async function loadLeaderboard(){try{remoteError='';leaderboardData=await api('/api/v1/leaderboard');render()}catch(error){remoteError=error.message;leaderboardData={entries:[]};render()}}
+
+const trophyNames={first_whistle:'First Whistle',century_club:'Century Club',unbeaten:'Unbeaten',perfect_114:'Perfect 114',iron_curtain:'Iron Curtain',era_mixer:'Era Mixer'};
+function profileScreen(){
+  const trophies=profileData?.trophies||[],runs=profileData?.runs||[];
+  return chrome(`<main class="page"><div class="section-head"><div><p class="eyebrow">Your verified history</p><h1 class="display">TROPHY CABINET.</h1></div><p>No account is needed for casual play. Sign in with ChatGPT to save server-authoritative ranked runs.</p></div>${remoteError?`<div class="panel"><div class="panel-body"><p>${esc(remoteError)}</p><a class="primary inline-link" href="/signin-with-chatgpt?return_to=%2F">Sign in with ChatGPT</a></div></div>`:!profileData?`<div class="empty-dossier"><b>Opening your cabinet…</b></div>`:`<div class="profile-grid"><section class="panel"><div class="panel-body"><div class="panel-title">Manager profile</div><div class="field"><label for="display-name">Display name</label><input id="display-name" maxlength="24" value="${esc(profileData.profile.display_name)}"></div><button class="ghost" data-action="save-profile">Save name</button><a class="nav-button inline-link" href="/signout-with-chatgpt?return_to=%2F">Sign out</a></div></section><section class="panel"><div class="panel-body"><div class="panel-title">What your XI has proved</div><div class="trophy-grid">${Object.entries(trophyNames).map(([id,name])=>{const won=trophies.find(t=>t.trophy_id===id);return `<article class="trophy ${won?'earned':''}"><span>${won?'◆':'◇'}</span><b>${name}</b><small>${won?`Earned ${new Date(won.earned_at).toLocaleDateString()}`:'Locked'}</small></article>`}).join('')}</div></div></section></div><section class="panel recent-runs"><div class="panel-body"><div class="panel-title">Recent verified seasons</div>${runs.map(r=>`<div class="run-row"><b>${r.points} pts</b><span>${r.wins}-${r.draws}-${r.losses}</span><span>${r.formation} · ${r.rating_mode}</span></div>`).join('')||'<p>Complete a Ranked Run to begin your history.</p>'}</div></section>`}</main>`);
+}
+async function loadProfile(){try{remoteError='';profileData=await api('/api/v1/me');render()}catch(error){remoteError=error.message;profileData=null;render()}}
+
+function methodology(){
+  return chrome(`<main class="page"><div class="section-head"><div><p class="eyebrow">Methodology · engine ${esc('2.0')}</p><h1 class="display">SHOW THE WORK.</h1></div><p>A strong XI improves the range; it never guarantees a result.</p></div><div class="method-grid"><section class="panel"><div class="panel-body"><div class="panel-title">Ratings</div><p>Season ratings are independent editorial estimates for a specific club campaign. Career peak is the highest represented season. Legacy is 70% best, 20% second and 10% third.</p><p><b>Current evidence status:</b> partial editorial archive. It is not yet a complete, statistically sourced La Liga database.</p></div></section><section class="panel"><div class="panel-body"><div class="panel-title">Season engine</div><p>Formation-adjusted player ratings form goalkeeper, defence, midfield and attack units. Unit gaps create a balance penalty. Home advantage and opponent profiles produce expected goals, then a seeded correlated-Poisson model creates each score.</p></div></section><section class="panel"><div class="panel-body"><div class="panel-title">Ranked integrity</div><p>The server owns every ranked draw, validates every card and slot, blocks duplicate identities, simulates the season and stores a signed receipt. LocalStorage and browser-edited scores cannot enter the leaderboard.</p></div></section><section class="panel"><div class="panel-body"><div class="panel-title">Source ledger</div><p>CC0 OpenFootball results are the calibration base. The public Wyscout 2017/18 event set is used for validation with attribution. Older cards stay labelled editorial until a licensed, redistribution-safe player dataset is secured.</p><a href="https://github.com/fr3ddykru3g3r/la-liga-38-0/blob/main/data/sources.json" target="_blank" rel="noreferrer">Open source ledger →</a></div></section></div></main>`);
 }
 
 function multiplayer(){
@@ -130,7 +185,7 @@ function onRoomMessage(msg){
 }
 
 function render(){
-  let html; if(state.screen==='home')html=home();else if(state.screen==='modes')html=modes();else if(state.screen==='setup')html=setup();else if(state.screen==='draft')html=draft();else if(state.screen==='review')html=review();else if(state.screen==='result')html=result();else if(state.screen==='atlas')html=atlas();else if(state.screen==='multiplayer')html=multiplayer();else html=home(); app.innerHTML=html;app.hidden=false;
+  let html; if(state.screen==='home')html=home();else if(state.screen==='modes')html=modes();else if(state.screen==='setup')html=setup();else if(state.screen==='draft')html=draft();else if(state.screen==='review')html=review();else if(state.screen==='result')html=result();else if(state.screen==='atlas')html=atlas();else if(state.screen==='multiplayer')html=multiplayer();else if(state.screen==='leaderboard')html=leaderboardScreen();else if(state.screen==='profile')html=profileScreen();else if(state.screen==='methodology')html=methodology();else html=home(); app.innerHTML=html;app.hidden=false;
 }
 
 app.addEventListener('click', async event=>{
@@ -139,17 +194,26 @@ app.addEventListener('click', async event=>{
   if(action==='home')setState({screen:'home',selectedPlayer:null});
   if(action==='modes')setState({screen:'modes',selectedPlayer:null});
   if(action==='atlas')setState({screen:'atlas',selectedPlayer:null});
-  if(el.dataset.mode){ if(el.dataset.mode==='atlas')setState({screen:'atlas',mode:'atlas'});else if(el.dataset.mode==='duel')setState({screen:'multiplayer',mode:'duel'});else setState({screen:'setup',mode:el.dataset.mode}); }
+  if(action==='leaderboard'){leaderboardData=null;remoteError='';setState({screen:'leaderboard',selectedPlayer:null});await loadLeaderboard();}
+  if(action==='profile'){profileData=null;remoteError='';setState({screen:'profile',selectedPlayer:null});await loadProfile();}
+  if(action==='methodology')setState({screen:'methodology',selectedPlayer:null});
+  if(el.dataset.mode){ if(el.dataset.mode==='atlas')setState({screen:'atlas',mode:'atlas'});else if(el.dataset.mode==='method')setState({screen:'methodology',mode:'method'});else if(el.dataset.mode==='duel')setState({screen:'multiplayer',mode:'duel'});else setState({screen:'setup',mode:el.dataset.mode}); }
   if(el.dataset.formation)setState({formation:el.dataset.formation});
   if(el.dataset.ratingMode)setState({ratingMode:el.dataset.ratingMode});
   if(el.dataset.difficulty)setState({difficulty:el.dataset.difficulty,rerolls:el.dataset.difficulty==='easy'?3:el.dataset.difficulty==='normal'?1:0});
-  if(action==='start'){ const seed=state.mode==='daily'?new Date().toISOString().slice(0,10):String(Date.now());setState({screen:'draft',lineup:[],offer:null,turn:0,result:null,seed}); }
-  if(action==='spin')spin(); if(action==='reroll')reroll(); if(el.dataset.pick)choosePlayer(el.dataset.pick);
+  if(action==='start'){
+    if(state.mode==='ranked'){
+      try{const payload=await api('/api/v1/runs',{method:'POST',body:JSON.stringify({mode:'ranked_archive',formation:state.formation,ratingMode:state.ratingMode,club:null,minYear:state.minYear})});applyServerRun(payload.run);}
+      catch(error){announce(error.message)}
+    }else{const seed=state.mode==='daily'?new Date().toISOString().slice(0,10):String(Date.now());setState({screen:'draft',lineup:[],offer:null,turn:0,result:null,seed,verified:false,trophies:[]});}
+  }
+  if(action==='spin')await spin(); if(action==='reroll')reroll(); if(el.dataset.pick)await choosePlayer(el.dataset.pick);
   if(el.dataset.player){ const p=players.find(x=>x.id===el.dataset.player);if(p)setState({selectedPlayer:p}); }
   if(action==='close-drawer'){ event.stopPropagation();setState({selectedPlayer:null}); }
   if(action==='restart'){ if(confirm('Discard this run and return to setup?'))setState({...fresh(),screen:'setup',mode:state.mode,formation:state.formation,ratingMode:state.ratingMode,difficulty:state.difficulty,club:state.club,minYear:state.minYear}); }
-  if(action==='simulate')doSimulate();
+  if(action==='simulate')await doSimulate();
   if(action==='share'){ const text=`LA LIGA XI — ${state.result.points}/114 pts, ${state.result.wins}-${state.result.draws}-${state.result.losses}, ${state.formation}, ${state.ratingMode} ratings.`; await navigator.clipboard?.writeText(text);announce('Result copied to clipboard.'); }
+  if(action==='save-profile'){try{await api('/api/v1/me',{method:'PATCH',body:JSON.stringify({displayName:document.querySelector('#display-name')?.value})});await loadProfile();announce('Profile updated.')}catch(error){announce(error.message)}}
   if(action==='create-room')await connectRoom('host'); if(action==='join-room')await connectRoom('guest');
   if(action==='start-duel'){ state.mode='duel';state.screen='setup';state.seed=`duel|${roomState.code}`;render(); }
 });

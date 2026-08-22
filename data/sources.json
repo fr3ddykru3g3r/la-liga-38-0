@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "ratingModelVersion": "editorial-1.1",
+  "simulationVersion": "laliga-xi-2.0",
+  "sources": [
+    {
+      "id": "openfootball-espana",
+      "url": "https://github.com/openfootball/espana",
+      "license": "CC0-1.0",
+      "use": "Historical fixtures, scores, home advantage and goal-distribution calibration",
+      "coverage": "Primera Division seasons available in the repository",
+      "redistribution": "Permitted"
+    },
+    {
+      "id": "wyscout-public-2017-18",
+      "url": "https://github.com/koenvo/wyscout-soccer-match-event-dataset",
+      "license": "CC BY 4.0",
+      "use": "One-season event-model validation",
+      "coverage": "La Liga 2017/18",
+      "redistribution": "Attribution required"
+    },
+    {
+      "id": "legacy-editorial-cards",
+      "url": null,
+      "license": null,
+      "use": "Current player-season gameplay cards",
+      "coverage": "Partial archive",
+      "redistribution": "Independent editorial estimates",
+      "warning": "Not a sourced statistical rating set; never present as official or fully audited"
+    }
+  ]
+}
