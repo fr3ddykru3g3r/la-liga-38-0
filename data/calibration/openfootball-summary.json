@@ -1,0 +1,148 @@
+{
+  "generatedAt": "2026-08-22T04:51:24.555Z",
+  "source": {
+    "repository": "https://github.com/openfootball/espana",
+    "commit": "6ae1e0f1dcfedefcfd1513d9ec54b06a681612c9",
+    "license": "CC0-1.0"
+  },
+  "coverage": {
+    "seasons": "2012-13 through 2025-26",
+    "matches": 5320
+  },
+  "targets": {
+    "goalsPerMatch": 2.658,
+    "homeGoalsPerMatch": 1.523,
+    "awayGoalsPerMatch": 1.134,
+    "homeWinPct": 46.07,
+    "drawPct": 25.36,
+    "awayWinPct": 28.57
+  },
+  "bySeason": [
+    {
+      "season": "2012-13",
+      "matches": 380,
+      "homeGoals": 641,
+      "awayGoals": 450,
+      "homeWins": 189,
+      "draws": 84,
+      "awayWins": 107
+    },
+    {
+      "season": "2013-14",
+      "matches": 380,
+      "homeGoals": 620,
+      "awayGoals": 425,
+      "homeWins": 179,
+      "draws": 86,
+      "awayWins": 115
+    },
+    {
+      "season": "2014-15",
+      "matches": 380,
+      "homeGoals": 584,
+      "awayGoals": 425,
+      "homeWins": 171,
+      "draws": 91,
+      "awayWins": 118
+    },
+    {
+      "season": "2015-16",
+      "matches": 380,
+      "homeGoals": 615,
+      "awayGoals": 428,
+      "homeWins": 183,
+      "draws": 92,
+      "awayWins": 105
+    },
+    {
+      "season": "2016-17",
+      "matches": 380,
+      "homeGoals": 632,
+      "awayGoals": 486,
+      "homeWins": 181,
+      "draws": 89,
+      "awayWins": 110
+    },
+    {
+      "season": "2017-18",
+      "matches": 380,
+      "homeGoals": 588,
+      "awayGoals": 436,
+      "homeWins": 179,
+      "draws": 86,
+      "awayWins": 115
+    },
+    {
+      "season": "2018-19",
+      "matches": 380,
+      "homeGoals": 552,
+      "awayGoals": 431,
+      "homeWins": 168,
+      "draws": 110,
+      "awayWins": 102
+    },
+    {
+      "season": "2019-20",
+      "matches": 380,
+      "homeGoals": 546,
+      "awayGoals": 396,
+      "homeWins": 174,
+      "draws": 105,
+      "awayWins": 101
+    },
+    {
+      "season": "2020-21",
+      "matches": 380,
+      "homeGoals": 520,
+      "awayGoals": 433,
+      "homeWins": 158,
+      "draws": 109,
+      "awayWins": 113
+    },
+    {
+      "season": "2021-22",
+      "matches": 380,
+      "homeGoals": 540,
+      "awayGoals": 411,
+      "homeWins": 165,
+      "draws": 111,
+      "awayWins": 104
+    },
+    {
+      "season": "2022-23",
+      "matches": 380,
+      "homeGoals": 553,
+      "awayGoals": 402,
+      "homeWins": 182,
+      "draws": 89,
+      "awayWins": 109
+    },
+    {
+      "season": "2023-24",
+      "matches": 380,
+      "homeGoals": 564,
+      "awayGoals": 441,
+      "homeWins": 167,
+      "draws": 107,
+      "awayWins": 106
+    },
+    {
+      "season": "2024-25",
+      "matches": 380,
+      "homeGoals": 552,
+      "awayGoals": 443,
+      "homeWins": 169,
+      "draws": 97,
+      "awayWins": 114
+    },
+    {
+      "season": "2025-26",
+      "matches": 380,
+      "homeGoals": 598,
+      "awayGoals": 426,
+      "homeWins": 186,
+      "draws": 93,
+      "awayWins": 101
+    }
+  ]
+}

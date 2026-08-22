@@ -32,6 +32,8 @@ These are fan-game ratings. They are not official La Liga, club, player-associat
 
 The engine is independently authored. It combines fitted positional ratings into four lines, applies a line-balance penalty, derives home/away expected goals against 19 opponent profiles, and samples scores with a seeded Poisson model. The same XI, rating mode and seed reproduce the same 38-match ledger.
 
+Historical calibration targets are generated from 5,000+ CC0 Spanish top-flight match results pinned to an OpenFootball commit. Run `npm run calibrate -- /path/to/openfootball-espana` to reproduce `data/calibration/openfootball-summary.json`. Automated tests enforce source/license metadata, home advantage, draw-rate bounds and strength monotonicity.
+
 This does **not** claim to copy 38-0's undisclosed coefficients or private player database. Publicly visible genre rules informed feature parity; implementation, visual identity, rating data and coefficients are original.
 
 ## Development
