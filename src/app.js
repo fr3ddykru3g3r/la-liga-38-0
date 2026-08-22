@@ -7,7 +7,7 @@ const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;',
 const modeInfo = {
   archive: ['Open Archive','Every club and era. Build the strongest XI the dial gives you.','◎'],
   club: ['Club Chronicle','Choose one club and draft only from its Spanish top-flight story.','⌂'],
-  daily: ['Daily Jornada','One shared seed each day. One attempt. Compare fairly.','◇'],
+  daily: ['Daily Draft','One shared seed each day. One attempt. Compare fairly.','◇'],
   blind: ['Blind Scout','Season ratings stay hidden until your XI is locked.','◉'],
   duel: ['Head-to-Head','A live room, the same draws, two independent XIs.','↔'],
   atlas: ['Ratings Atlas','Explore season, Prime, and independent legacy ratings.','▦']
@@ -18,22 +18,27 @@ let roomState = { code:'', peers:[], connected:false, name:'Manager', progress:{
 
 function save(){
   const safe = {...state, offer:null, selectedPlayer:null, toast:''};
-  localStorage.setItem('jornada-xi-state-v1', JSON.stringify(safe));
+  localStorage.setItem('la-liga-xi-state-v1', JSON.stringify(safe));
 }
-function load(){ try { const saved = JSON.parse(localStorage.getItem('jornada-xi-state-v1')); if(saved) state={...fresh(),...saved,screen:'home'}; } catch {} }
+function load(){ try { const saved = JSON.parse(localStorage.getItem('la-liga-xi-state-v1')); if(saved) state={...fresh(),...saved,screen:'home'}; } catch {} }
 function setState(patch){ state={...state,...patch}; save(); render(); }
 function announce(message){ state.toast=message; render(); window.setTimeout(()=>{state.toast='';render()},2200); }
 
 function chrome(content){
-  return `<div class="shell"><header class="topbar"><button class="brand" data-action="home" aria-label="Jornada XI home"><span class="brand-mark">XI</span><span class="brand-text display">JORNADA // XI<small>UNOFFICIAL SPANISH TOP-FLIGHT DRAFT</small></span></button><nav class="top-actions" aria-label="Primary"><button class="nav-button" data-action="atlas">Ratings atlas</button><button class="nav-button" data-action="modes">Play</button></nav></header>${content}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:''}${state.selectedPlayer?drawer(state.selectedPlayer):''}</div>`;
+  content = content
+    .replaceAll('Jornada dial', 'Matchday dial')
+    .replaceAll('38 jornadas', '38 matches')
+    .replaceAll('Simulate 38 jornadas', 'Simulate 38 matches')
+    .replaceAll('38-jornada ledger', '38-match ledger');
+  return `<div class="shell"><header class="topbar"><button class="brand" data-action="home" aria-label="La Liga XI home"><span class="brand-mark">XI</span><span class="brand-text display">LA LIGA XI<small>UNOFFICIAL ALL-TIME DRAFT</small></span></button><nav class="top-actions" aria-label="Primary"><button class="nav-button" data-action="atlas">Ratings atlas</button><button class="nav-button" data-action="modes">Play</button></nav></header>${content}${state.toast?`<div class="toast" role="status">${esc(state.toast)}</div>`:''}${state.selectedPlayer?drawer(state.selectedPlayer):''}</div>`;
 }
 
 function home(){
-  return chrome(`<main class="page hero"><section><p class="eyebrow">38 jornadas. Eleven decisions.</p><h1 class="display">BUILD<br><span>THE ONCE.</span></h1><p class="lede">Spin through Spanish top-flight history, draft one player from each club-season dossier, then test your XI across a complete 38-match campaign.</p><div class="hero-ctas"><button class="primary" data-action="modes">Enter the draft</button><button class="ghost" data-action="atlas">Open ratings atlas</button></div><p class="method-note">Independent fan game. No official crests, kits, portraits, league marks, or publisher ratings are used.</p></section><aside class="dial-stage" aria-label="38 jornada dial"><div class="dial"><div class="dial-core display">Spin<br>history</div></div><div class="dial-note"><b class="display">VISIBLE ODDS.</b> Every spin explains its eligible pool.</div></aside></main>`);
+  return chrome(`<main class="page hero"><section><p class="eyebrow">38 matches. Eleven decisions.</p><h1 class="display">BUILD<br><span>YOUR XI.</span></h1><p class="lede">Spin through Spanish top-flight history, draft one player from each club-season dossier, then test your XI across a complete 38-match campaign.</p><div class="hero-ctas"><button class="primary" data-action="modes">Enter the draft</button><button class="ghost" data-action="atlas">Open ratings atlas</button></div><p class="method-note">Independent fan game. No official crests, kits, portraits, league marks, or publisher ratings are used.</p></section><aside class="dial-stage" aria-label="38-match dial"><div class="dial"><div class="dial-core display">Spin<br>history</div></div><div class="dial-note"><b class="display">VISIBLE ODDS.</b> Every spin explains its eligible pool.</div></aside></main>`);
 }
 
 function modes(){
-  return chrome(`<main class="page"><div class="section-head"><div><p class="eyebrow">Choose the argument</p><h1 class="display">SIX WAYS IN.</h1></div><p>The loop stays clean: draw a club-season, make one call, fill the tactical board, then survive 38 jornadas.</p></div><div class="mode-grid">${Object.entries(modeInfo).map(([key,[name,desc,icon]],i)=>`<button class="mode-card ${state.mode===key?'selected':''}" data-mode="${key}" data-index="0${i+1}"><span class="mode-icon">${icon}</span><h3>${name}</h3><p>${desc}</p></button>`).join('')}</div></main>`);
+  return chrome(`<main class="page"><div class="section-head"><div><p class="eyebrow">Choose the argument</p><h1 class="display">SIX WAYS IN.</h1></div><p>The loop stays clean: draw a club-season, make one call, fill the tactical board, then survive 38 matches.</p></div><div class="mode-grid">${Object.entries(modeInfo).map(([key,[name,desc,icon]],i)=>`<button class="mode-card ${state.mode===key?'selected':''}" data-mode="${key}" data-index="0${i+1}"><span class="mode-icon">${icon}</span><h3>${name}</h3><p>${desc}</p></button>`).join('')}</div></main>`);
 }
 
 function setup(){
@@ -104,7 +109,7 @@ function multiplayer(){
 
 async function connectRoom(role){
   roomState.name=(document.querySelector('[data-room="name"]')?.value||'Manager').slice(0,24); roomState.code=(document.querySelector('[data-room="code"]')?.value||Math.random().toString(36).slice(2,8)).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); roomState.role=role;
-  const channel=new BroadcastChannel(`jornada-xi-${roomState.code}`); const receive=payload=>onRoomMessage(payload); channel.onmessage=e=>receive(e.data); roomState.send=payload=>channel.postMessage(payload); roomState.leave=()=>channel.close(); roomState.connected=true;
+  const channel=new BroadcastChannel(`la-liga-xi-${roomState.code}`); const receive=payload=>onRoomMessage(payload); channel.onmessage=e=>receive(e.data); roomState.send=payload=>channel.postMessage(payload); roomState.leave=()=>channel.close(); roomState.connected=true;
   roomState.send({type:'hello',name:roomState.name}); render();
   try{
     const {default:Peer}=await import('https://esm.sh/peerjs@1.5.5?bundle');
@@ -144,7 +149,7 @@ app.addEventListener('click', async event=>{
   if(action==='close-drawer'){ event.stopPropagation();setState({selectedPlayer:null}); }
   if(action==='restart'){ if(confirm('Discard this run and return to setup?'))setState({...fresh(),screen:'setup',mode:state.mode,formation:state.formation,ratingMode:state.ratingMode,difficulty:state.difficulty,club:state.club,minYear:state.minYear}); }
   if(action==='simulate')doSimulate();
-  if(action==='share'){ const text=`JORNADA // XI — ${state.result.points}/114 pts, ${state.result.wins}-${state.result.draws}-${state.result.losses}, ${state.formation}, ${state.ratingMode} ratings.`; await navigator.clipboard?.writeText(text);announce('Result copied to clipboard.'); }
+  if(action==='share'){ const text=`LA LIGA XI — ${state.result.points}/114 pts, ${state.result.wins}-${state.result.draws}-${state.result.losses}, ${state.formation}, ${state.ratingMode} ratings.`; await navigator.clipboard?.writeText(text);announce('Result copied to clipboard.'); }
   if(action==='create-room')await connectRoom('host'); if(action==='join-room')await connectRoom('guest');
   if(action==='start-duel'){ state.mode='duel';state.screen='setup';state.seed=`duel|${roomState.code}`;render(); }
 });
