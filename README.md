@@ -1,11 +1,11 @@
-# JORNADA // XI
+# La Liga XI
 
 An original, independent Spanish top-flight all-time XI draft and 38-match season simulator.
 
 ## Play loop
 
 1. Choose a mode, formation, difficulty and rating lens.
-2. Spin the 38-tick Jornada Dial. It samples uniformly from club-seasons that can legally fill at least one open slot.
+2. Spin the 38-tick Matchday Dial. It samples uniformly from club-seasons that can legally fill at least one open slot.
 3. Draft one eligible player-season. A real player identity can only appear once in an XI.
 4. Complete the XI and inspect goalkeeper, defence, midfield, attack, balance and an expected-points band.
 5. Run a seeded 38-match home-and-away campaign against 19 calibrated opponent profiles.
@@ -14,7 +14,7 @@ An original, independent Spanish top-flight all-time XI draft and 38-match seaso
 
 - Open Archive
 - Club Chronicle
-- Daily Jornada
+- Daily Draft
 - Blind Scout
 - Head-to-Head casual WebRTC room
 - Ratings Atlas
