@@ -26,7 +26,7 @@ An original, independent Spanish top-flight all-time XI draft and 38-match seaso
 - **Prime**: the highest career-best value represented by the player card.
 - **Legacy**: 70% best archived season, 20% second, 10% third. Sparse history repeats the available estimate.
 
-These are fan-game ratings. They are not official La Liga, club, player-association, or video-game publisher ratings. The current 3,914-card archive is partial and editorial; it is not represented as a complete or statistically sourced history. `data/sources.json` records the evidence and licensing status honestly.
+These are fan-game ratings. They are not official La Liga, club, player-association, or video-game publisher ratings. The current 6,104-card archive covers 19 clubs across 32 season labels, but remains partial and editorial; it is not represented as a complete or statistically sourced history. `data/sources.json` records the evidence and licensing status honestly.
 
 ## Simulation
 

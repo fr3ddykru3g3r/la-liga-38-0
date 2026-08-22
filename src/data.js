@@ -1,6 +1,8 @@
 import { RAW1 } from './data/raw/p1.ts';
 import { RAW2 } from './data/raw/p2.ts';
 import { RAW3 } from './data/raw/p3.ts';
+import { RAW4 } from './data/raw/p4.ts';
+import { RAW5 } from './data/raw/p5.ts';
 
 // Curated fan-game starter archive. Ratings are an independent editorial model,
 // not official league or publisher data. IDs are stable for deterministic games.
@@ -166,10 +168,12 @@ const curatedPlayers = rows.map((row, index) => {
 const clubNames = {
   'real-madrid':'Real Madrid','barcelona':'Barcelona','atletico-madrid':'Atlético Madrid',
   'valencia':'Valencia','sevilla':'Sevilla','villarreal':'Villarreal','athletic-club':'Athletic Club',
-  'deportivo':'Deportivo','real-sociedad':'Real Sociedad'
+  'deportivo':'Deportivo','real-sociedad':'Real Sociedad','real-betis':'Real Betis','mallorca':'Mallorca',
+  'espanyol':'Espanyol','osasuna':'Osasuna','celta-vigo':'Celta Vigo','getafe':'Getafe','levante':'Levante',
+  'malaga':'Málaga','rayo-vallecano':'Rayo Vallecano','alaves':'Alavés'
 };
 const normalizePosition = position => ({AM:'CAM',DM:'CDM',FW:'ST',F:'ST',M:'CM'}[position] || position);
-const rawArchive = Object.entries({...RAW1,...RAW2,...RAW3}).flatMap(([key, squad], groupIndex) => {
+const rawArchive = Object.entries({...RAW1,...RAW2,...RAW3,...RAW4,...RAW5}).flatMap(([key, squad], groupIndex) => {
   const [clubId, yearText] = key.split('|');
   const year = Number(yearText) >= 90 ? 1900 + Number(yearText) : 2000 + Number(yearText);
   const season = `${year}/${String((year + 1) % 100).padStart(2,'0')}`;
