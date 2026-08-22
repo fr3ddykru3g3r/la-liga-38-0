@@ -26,13 +26,13 @@ An original, independent Spanish top-flight all-time XI draft and 38-match seaso
 - **Prime**: the highest career-best value represented by the player card.
 - **Legacy**: 70% best archived season, 20% second, 10% third. Sparse history repeats the available estimate.
 
-These are fan-game ratings. They are not official La Liga, club, player-association, or video-game publisher ratings. The current 6,104-card archive covers 19 clubs across 32 season labels, but remains partial and editorial; it is not represented as a complete or statistically sourced history. `data/sources.json` records the evidence and licensing status honestly.
+These are fan-game ratings. They are not official La Liga, club, FIFPRO, or video-game publisher ratings. The validated 6,836-card archive covers 35 clubs across 32 season labels, but remains partial and editorial; it is not represented as a complete or statistically sourced history. `data/sources.json` records the evidence and licensing status honestly.
 
 ## Simulation
 
 The engine is independently authored. It combines fitted positional ratings into four lines, applies a line-balance penalty, derives home/away expected goals against 19 opponent profiles, and samples scores with a seeded Poisson model. The same XI, rating mode and seed reproduce the same 38-match ledger.
 
-Historical calibration targets are generated from 5,000+ CC0 Spanish top-flight match results pinned to an OpenFootball commit. Run `npm run calibrate -- /path/to/openfootball-espana` to reproduce `data/calibration/openfootball-summary.json`. Automated tests enforce source/license metadata, home advantage, draw-rate bounds and strength monotonicity.
+Historical reference targets are generated from 5,000+ CC0 Spanish top-flight match results pinned to an OpenFootball commit. Run `npm run calibrate -- /path/to/openfootball-espana` to reproduce `data/calibration/openfootball-summary.json`. The current engine does not claim its coefficients were statistically fitted to that snapshot.
 
 This does **not** claim to copy 38-0's undisclosed coefficients or private player database. Publicly visible genre rules informed feature parity; implementation, visual identity, rating data and coefficients are original.
 
@@ -48,7 +48,7 @@ Production build: `npm run build`. The app is deployable as a static Vite projec
 
 ## Multiplayer integrity
 
-Head-to-Head uses WebRTC data channels with deterministic shared seeds and peer validation. It remains explicitly casual and unranked. Ranked Run is separate: the Sites Worker issues every draw, validates each pick against its canonical card catalogue, simulates the season, stores the result in D1, awards trophies and exposes only server-generated results to the leaderboard.
+Head-to-Head uses WebRTC data channels and a deterministic room seed for casual comparison. It does not yet synchronize picks or reject falsified peer results, so it remains explicitly beta and unranked. Ranked Run is separate: the Sites Worker issues every draw, validates each pick against its canonical card catalogue, simulates the season, stores the result in D1, awards trophies and exposes only server-generated results to the leaderboard.
 
 ## Competitive integrity
 

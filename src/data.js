@@ -178,15 +178,19 @@ const clubNames = {
   'albacete':'Albacete Balompié','oviedo':'Real Oviedo'
 };
 const normalizePosition = position => ({AM:'CAM',DM:'CDM',FW:'ST',F:'ST',FC:'ST',M:'CM',MF:'CM',FB:'RB'}[position] || position);
+const validPositions = new Set(['GK','RB','CB','LB','RWB','LWB','CDM','CM','CAM','RM','LM','RW','ST','LW']);
 const rawArchive = Object.entries({...RAW1,...RAW2,...RAW3,...RAW4,...RAW5}).flatMap(([key, squad], groupIndex) => {
   const [clubId, yearText] = key.split('|');
   if (!clubNames[clubId]) return [];
   const year = Number(yearText) >= 90 ? 1900 + Number(yearText) : 2000 + Number(yearText);
   const season = `${year}/${String((year + 1) % 100).padStart(2,'0')}`;
-  return squad.map((record, cardIndex) => {
+  return squad.flatMap((record, cardIndex) => {
     const [name, positionText, ratingText] = record.split('|');
+    if (!name || !positionText || !ratingText) return [];
     const positions = positionText.split('/').map(normalizePosition);
-    return { id:`${slug(name)}-${clubId}-${year}`, playerId:slug(name), club:clubNames[clubId], season, name, positions, rating:Number(ratingText), prime:0, tier:groupIndex < 120 ? 'A' : 'B', cardIndex };
+    const rating = Number(ratingText);
+    if (!Number.isFinite(rating) || positions.some(position => !validPositions.has(position))) return [];
+    return [{ id:`${slug(name)}-${clubId}-${year}`, playerId:slug(name), club:clubNames[clubId], season, name, positions, rating, prime:0, tier:groupIndex < 120 ? 'A' : 'B', cardIndex }];
   });
 });
 const peakByPlayer = new Map();
@@ -199,7 +203,13 @@ for (const player of [...rawArchive,...curatedPlayers]) {
   const existing=byCard.get(key);
   if(!existing || player.rating>existing.rating) byCard.set(key,{...player,prime:peakByPlayer.get(player.playerId)});
 }
-export const players = [...byCard.values()].map(p => ({...p, club: p.club === 'Mallorca' ? 'RCD Mallorca' : p.club}));
+const normalizedCards = [...byCard.values()].map(p => ({...p, club: p.club === 'Mallorca' ? 'RCD Mallorca' : p.club}));
+const byId = new Map();
+for (const card of normalizedCards) {
+  const existing = byId.get(card.id);
+  if (!existing || card.rating > existing.rating) byId.set(card.id, card);
+}
+export const players = [...byId.values()];
 
 export const clubs = [...new Set(players.map(p => p.club))].sort();
 export const seasons = [...new Set(players.map(p => p.season))].sort();

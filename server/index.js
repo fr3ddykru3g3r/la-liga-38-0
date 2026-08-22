@@ -1,34 +1,454 @@
-import { cards } from './catalog.js';
-import { staticAssets } from './static.js';
-import { ENGINE_VERSION, formations, fit, effective, legalGroups, lineStrength, rng, simulate } from './engine.js';
+import { cards } from "./catalog.js";
+import { staticAssets } from "./static.js";
+import {
+  ENGINE_VERSION,
+  formations,
+  fit,
+  effective,
+  legalGroups,
+  lineStrength,
+  rng,
+  simulate,
+} from "./engine.js";
 
-const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
-const error=(code,message,status=400)=>json({error:{code,message}},status);
-const userId=request=>request.headers.get('oai-authenticated-user-id');
-const safeName=value=>String(value||'Manager').replace(/[^\p{L}\p{N} ._'-]/gu,'').trim().slice(0,24)||'Manager';
-const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),b=>b.toString(16).padStart(2,'0')).join('');
-const parse=async request=>{if(Number(request.headers.get('content-length')||0)>120000)throw new Error('Body too large');return request.json()};
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+const error = (code, message, status = 400) =>
+  json({ error: { code, message } }, status);
+const userId = (request) => request.headers.get("oai-authenticated-user-id");
+const safeName = (value) =>
+  String(value || "Manager")
+    .replace(/[^\p{L}\p{N} ._'-]/gu, "")
+    .trim()
+    .slice(0, 24) || "Manager";
+const digest = async (value) =>
+  Array.from(
+    new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+    ),
+    (b) => b.toString(16).padStart(2, "0"),
+  ).join("");
+const parse = async (request) => {
+  if (Number(request.headers.get("content-length") || 0) > 120000)
+    throw new Error("Body too large");
+  return request.json();
+};
 
-async function ensureProfile(db,request){const id=userId(request);if(!id)return null;const email=request.headers.get('oai-authenticated-user-email')||'Manager';await db.prepare('INSERT OR IGNORE INTO profiles(user_id,display_name) VALUES(?,?)').bind(id,safeName(email.split('@')[0])).run();return id;}
-async function ownedRun(db,id,uid){return db.prepare('SELECT * FROM runs WHERE id=? AND user_id=?').bind(id,uid).first();}
-function clientRun(row){const state=JSON.parse(row.state_json);return{id:row.id,status:row.status,mode:row.mode,formation:row.formation,ratingMode:row.rating_mode,version:row.version,seedCommitment:row.seed_commitment,turn:state.picks.length,picks:state.picks,offer:state.offer?{club:state.offer.club,season:state.offer.season,cards:state.offer.cards,poolSize:state.offer.poolSize}:null};}
-async function deriveSeed(runId,key='development-seed'){return digest(`${key}|${runId}|${ENGINE_VERSION}`)}
-function earnedTrophies(result,picks){const out=['first_whistle'];if(result.points>=100)out.push('century_club');if(result.losses===0)out.push('unbeaten');if(result.wins===38)out.push('perfect_114');if(result.goalsAgainst<=20)out.push('iron_curtain');if(new Set(picks.map(p=>p.card.season.slice(0,3))).size>=4)out.push('era_mixer');return out;}
+async function ensureProfile(db, request) {
+  const id = userId(request);
+  if (!id) return null;
+  const email =
+    request.headers.get("oai-authenticated-user-email") || "Manager";
+  await db
+    .prepare("INSERT OR IGNORE INTO profiles(user_id,display_name) VALUES(?,?)")
+    .bind(id, safeName(email.split("@")[0]))
+    .run();
+  return id;
+}
+async function ownedRun(db, id, uid) {
+  return db
+    .prepare("SELECT * FROM runs WHERE id=? AND user_id=?")
+    .bind(id, uid)
+    .first();
+}
+function clientRun(row) {
+  const state = JSON.parse(row.state_json);
+  return {
+    id: row.id,
+    status: row.status,
+    mode: row.mode,
+    formation: row.formation,
+    ratingMode: row.rating_mode,
+    version: row.version,
+    seedCommitment: row.seed_commitment,
+    turn: state.picks.length,
+    picks: state.picks,
+    offer: state.offer
+      ? {
+          club: state.offer.club,
+          season: state.offer.season,
+          cards: state.offer.cards,
+          poolSize: state.offer.poolSize,
+        }
+      : null,
+  };
+}
+async function deriveSeed(runId, key) {
+  if (!key) throw new Error("RUN_SEED_KEY is not configured");
+  return digest(`${key}|${runId}|${ENGINE_VERSION}`);
+}
+function earnedTrophies(result, picks) {
+  const out = ["first_whistle"];
+  if (result.points >= 100) out.push("century_club");
+  if (result.losses === 0) out.push("unbeaten");
+  if (result.wins === 38) out.push("perfect_114");
+  if (result.goalsAgainst <= 20) out.push("iron_curtain");
+  if (new Set(picks.map((p) => p.card.season.slice(0, 3))).size >= 4)
+    out.push("era_mixer");
+  return out;
+}
 
-async function createRun(request,env){const uid=await ensureProfile(env.DB,request);if(!uid)return error('SIGN_IN_REQUIRED','Sign in with ChatGPT to start a server-authoritative ranked run.',401);const body=await parse(request),formation=formations[body.formation]?body.formation:'4-3-3',ratingMode=body.ratingMode==='prime'?'prime':'season',mode=['ranked_archive','ranked_daily'].includes(body.mode)?body.mode:'ranked_archive';const id=crypto.randomUUID(),seed=await deriveSeed(id,env.RUN_SEED_KEY),commitment=await digest(seed),state={picks:[],offer:null,filters:{club:body.club||null,minYear:Number(body.minYear)||1990}};await env.DB.prepare('INSERT INTO runs(id,user_id,mode,status,formation,rating_mode,seed,seed_commitment,state_json,version) VALUES(?,?,?,?,?,?,?,?,?,1)').bind(id,uid,mode,'drafting',formation,ratingMode,seed,commitment,JSON.stringify(state)).run();return json({run:clientRun({id,mode,status:'drafting',formation,rating_mode:ratingMode,version:1,seed_commitment:commitment,state_json:JSON.stringify(state)})},201);}
+async function createRun(request, env) {
+  if (!env.RUN_SEED_KEY || !env.SCORE_RECEIPT_KEY)
+    return error(
+      "RANKED_UNAVAILABLE",
+      "Ranked play is temporarily unavailable.",
+      503,
+    );
+  const uid = await ensureProfile(env.DB, request);
+  if (!uid)
+    return error(
+      "SIGN_IN_REQUIRED",
+      "Sign in with ChatGPT to start a server-authoritative ranked run.",
+      401,
+    );
+  const body = await parse(request),
+    formation = formations[body.formation] ? body.formation : "4-3-3",
+    ratingMode = body.ratingMode === "prime" ? "prime" : "season",
+    mode = ["ranked_archive", "ranked_daily"].includes(body.mode)
+      ? body.mode
+      : "ranked_archive";
+  const id = crypto.randomUUID(),
+    seed = await deriveSeed(id, env.RUN_SEED_KEY),
+    commitment = await digest(seed),
+    state = {
+      picks: [],
+      offer: null,
+      filters: {
+        club: body.club || null,
+        minYear: Number(body.minYear) || 1990,
+      },
+    };
+  await env.DB.prepare(
+    "INSERT INTO runs(id,user_id,mode,status,formation,rating_mode,seed,seed_commitment,state_json,version) VALUES(?,?,?,?,?,?,?,?,?,1)",
+  )
+    .bind(
+      id,
+      uid,
+      mode,
+      "drafting",
+      formation,
+      ratingMode,
+      seed,
+      commitment,
+      JSON.stringify(state),
+    )
+    .run();
+  return json(
+    {
+      run: clientRun({
+        id,
+        mode,
+        status: "drafting",
+        formation,
+        rating_mode: ratingMode,
+        version: 1,
+        seed_commitment: commitment,
+        state_json: JSON.stringify(state),
+      }),
+    },
+    201,
+  );
+}
 
-async function mutateRun(request,env,id,action){const uid=await ensureProfile(env.DB,request);if(!uid)return error('SIGN_IN_REQUIRED','Sign in is required.',401);const row=await ownedRun(env.DB,id,uid);if(!row)return error('RUN_NOT_FOUND','Run not found.',404);if(row.status==='complete')return error('RUN_COMPLETE','This run is already complete.',409);const body=await parse(request),expected=Number(body.expectedVersion);if(expected!==row.version)return error('STALE_VERSION','Reload the authoritative run state.',409);const state=JSON.parse(row.state_json),slots=formations[row.formation];
-  if(action==='spin'){if(state.offer)return error('OFFER_OPEN','Choose from the current dossier first.',409);const open=slots.filter((_,i)=>!state.picks.some(p=>p.slotIndex===i)),groups=legalGroups(cards,open,state.picks,state.filters);if(!groups.length)return error('NO_LEGAL_DRAW','No legal club-season remains.',409);const random=rng(`${row.seed}|spin|${state.picks.length}`),group=groups[Math.floor(random()*groups.length)];state.offer={club:group.club,season:group.season,poolSize:groups.length,cards:group.cards.filter(c=>open.some(s=>fit(c,s)>0))};}
-  else if(action==='pick'){if(!state.offer)return error('NO_OFFER','Spin before selecting.',409);const card=state.offer.cards.find(c=>c.id===body.cardId);if(!card)return error('INVALID_PICK','That card is not in the server offer.',422);if(state.picks.some(p=>p.card.playerId===card.playerId))return error('DUPLICATE_PLAYER','A real player can appear only once.',422);const candidates=slots.map((slot,slotIndex)=>({slot,slotIndex,score:effective(card,slot,row.rating_mode)})).filter(s=>s.score>0&&!state.picks.some(p=>p.slotIndex===s.slotIndex)).sort((a,b)=>b.score-a.score),chosen=candidates.find(x=>x.slotIndex===Number(body.slotIndex))||candidates[0];if(!chosen)return error('NO_LEGAL_SLOT','This player cannot fill an open slot.',422);state.picks.push({slot:chosen.slot,slotIndex:chosen.slotIndex,card});state.offer=null;}
-  else return error('UNKNOWN_ACTION','Unknown run action.',404);
-  const next=row.version+1,status=state.picks.length===11?'ready':'drafting',updated=await env.DB.prepare('UPDATE runs SET state_json=?,version=?,status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND version=?').bind(JSON.stringify(state),next,status,id,uid,row.version).run();if(!updated.meta?.changes)return error('CONFLICT','Another action changed this run.',409);return json({run:clientRun({...row,state_json:JSON.stringify(state),version:next,status})});}
+async function mutateRun(request, env, id, action) {
+  const uid = await ensureProfile(env.DB, request);
+  if (!uid) return error("SIGN_IN_REQUIRED", "Sign in is required.", 401);
+  const row = await ownedRun(env.DB, id, uid);
+  if (!row) return error("RUN_NOT_FOUND", "Run not found.", 404);
+  if (row.status === "complete")
+    return error("RUN_COMPLETE", "This run is already complete.", 409);
+  const body = await parse(request),
+    expected = Number(body.expectedVersion);
+  if (expected !== row.version)
+    return error("STALE_VERSION", "Reload the authoritative run state.", 409);
+  const state = JSON.parse(row.state_json),
+    slots = formations[row.formation];
+  if (action === "spin") {
+    if (state.offer)
+      return error("OFFER_OPEN", "Choose from the current dossier first.", 409);
+    const open = slots.filter(
+        (_, i) => !state.picks.some((p) => p.slotIndex === i),
+      ),
+      groups = legalGroups(cards, open, state.picks, state.filters);
+    if (!groups.length)
+      return error("NO_LEGAL_DRAW", "No legal club-season remains.", 409);
+    const random = rng(`${row.seed}|spin|${state.picks.length}`),
+      group = groups[Math.floor(random() * groups.length)];
+    state.offer = {
+      club: group.club,
+      season: group.season,
+      poolSize: groups.length,
+      cards: group.cards.filter((c) => open.some((s) => fit(c, s) > 0)),
+    };
+  } else if (action === "pick") {
+    if (!state.offer) return error("NO_OFFER", "Spin before selecting.", 409);
+    const card = state.offer.cards.find((c) => c.id === body.cardId);
+    if (!card)
+      return error(
+        "INVALID_PICK",
+        "That card is not in the server offer.",
+        422,
+      );
+    if (state.picks.some((p) => p.card.playerId === card.playerId))
+      return error(
+        "DUPLICATE_PLAYER",
+        "A real player can appear only once.",
+        422,
+      );
+    const candidates = slots
+        .map((slot, slotIndex) => ({
+          slot,
+          slotIndex,
+          score: effective(card, slot, row.rating_mode),
+        }))
+        .filter(
+          (s) =>
+            s.score > 0 &&
+            !state.picks.some((p) => p.slotIndex === s.slotIndex),
+        )
+        .sort((a, b) => b.score - a.score),
+      chosen =
+        candidates.find((x) => x.slotIndex === Number(body.slotIndex)) ||
+        candidates[0];
+    if (!chosen)
+      return error(
+        "NO_LEGAL_SLOT",
+        "This player cannot fill an open slot.",
+        422,
+      );
+    state.picks.push({ slot: chosen.slot, slotIndex: chosen.slotIndex, card });
+    state.offer = null;
+  } else return error("UNKNOWN_ACTION", "Unknown run action.", 404);
+  const next = row.version + 1,
+    status = state.picks.length === 11 ? "ready" : "drafting",
+    updated = await env.DB.prepare(
+      "UPDATE runs SET state_json=?,version=?,status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND version=?",
+    )
+      .bind(JSON.stringify(state), next, status, id, uid, row.version)
+      .run();
+  if (!updated.meta?.changes)
+    return error("CONFLICT", "Another action changed this run.", 409);
+  return json({
+    run: clientRun({
+      ...row,
+      state_json: JSON.stringify(state),
+      version: next,
+      status,
+    }),
+  });
+}
 
-async function lockRun(request,env,id){const uid=await ensureProfile(env.DB,request);if(!uid)return error('SIGN_IN_REQUIRED','Sign in is required.',401);const row=await ownedRun(env.DB,id,uid);if(!row)return error('RUN_NOT_FOUND','Run not found.',404);if(row.status==='complete'){const saved=await env.DB.prepare('SELECT result_json,signature FROM verified_runs WHERE run_id=?').bind(id).first();return json({result:JSON.parse(saved.result_json),signature:saved.signature,verified:true});}const body=await parse(request);if(Number(body.expectedVersion)!==row.version)return error('STALE_VERSION','Reload the authoritative run state.',409);const state=JSON.parse(row.state_json);if(state.picks.length!==11)return error('INCOMPLETE_XI','Eleven server-confirmed picks are required.',422);const result=simulate(state.picks,row.rating_mode,`${row.seed}|season`),signature=await digest(`${env.SCORE_RECEIPT_KEY||'development-receipt'}|${id}|${JSON.stringify(result)}`),xi=Math.round(lineStrength(state.picks,row.rating_mode).overall);await env.DB.batch([env.DB.prepare('UPDATE runs SET status=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND version=?').bind('complete',id,uid,row.version),env.DB.prepare('INSERT INTO verified_runs(run_id,user_id,mode,formation,rating_mode,engine_version,seed,signature,lineup_json,result_json,points,wins,draws,losses,goal_difference,xi_rating) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,uid,row.mode,row.formation,row.rating_mode,ENGINE_VERSION,row.seed,signature,JSON.stringify(state.picks),JSON.stringify(result),result.points,result.wins,result.draws,result.losses,result.goalDifference,xi)]);const trophies=earnedTrophies(result,state.picks);for(const trophy of trophies)await env.DB.prepare('INSERT OR IGNORE INTO trophies(user_id,trophy_id,run_id) VALUES(?,?,?)').bind(uid,trophy,id).run();return json({result,signature,verified:true,engineVersion:ENGINE_VERSION,trophies});}
+async function lockRun(request, env, id) {
+  if (!env.SCORE_RECEIPT_KEY)
+    return error(
+      "RANKED_UNAVAILABLE",
+      "Ranked play is temporarily unavailable.",
+      503,
+    );
+  const uid = await ensureProfile(env.DB, request);
+  if (!uid) return error("SIGN_IN_REQUIRED", "Sign in is required.", 401);
+  const row = await ownedRun(env.DB, id, uid);
+  if (!row) return error("RUN_NOT_FOUND", "Run not found.", 404);
+  if (row.status === "complete") {
+    const saved = await env.DB.prepare(
+      "SELECT result_json,signature FROM verified_runs WHERE run_id=?",
+    )
+      .bind(id)
+      .first();
+    return json({
+      result: JSON.parse(saved.result_json),
+      signature: saved.signature,
+      verified: true,
+    });
+  }
+  const body = await parse(request);
+  if (Number(body.expectedVersion) !== row.version)
+    return error("STALE_VERSION", "Reload the authoritative run state.", 409);
+  const state = JSON.parse(row.state_json);
+  if (state.picks.length !== 11)
+    return error(
+      "INCOMPLETE_XI",
+      "Eleven server-confirmed picks are required.",
+      422,
+    );
+  const result = simulate(state.picks, row.rating_mode, `${row.seed}|season`),
+    signature = await digest(
+      `${env.SCORE_RECEIPT_KEY}|${id}|${JSON.stringify(result)}`,
+    ),
+    xi = Math.round(lineStrength(state.picks, row.rating_mode).overall);
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE runs SET status=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND version=?",
+    ).bind("complete", id, uid, row.version),
+    env.DB.prepare(
+      "INSERT INTO verified_runs(run_id,user_id,mode,formation,rating_mode,engine_version,seed,signature,lineup_json,result_json,points,wins,draws,losses,goal_difference,xi_rating) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    ).bind(
+      id,
+      uid,
+      row.mode,
+      row.formation,
+      row.rating_mode,
+      ENGINE_VERSION,
+      row.seed,
+      signature,
+      JSON.stringify(state.picks),
+      JSON.stringify(result),
+      result.points,
+      result.wins,
+      result.draws,
+      result.losses,
+      result.goalDifference,
+      xi,
+    ),
+  ]);
+  const trophies = earnedTrophies(result, state.picks);
+  for (const trophy of trophies)
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO trophies(user_id,trophy_id,run_id) VALUES(?,?,?)",
+    )
+      .bind(uid, trophy, id)
+      .run();
+  return json({
+    result,
+    signature,
+    verified: true,
+    engineVersion: ENGINE_VERSION,
+    trophies,
+  });
+}
 
-async function leaderboard(env,url){const mode=url.searchParams.get('mode')||'ranked_archive',rows=await env.DB.prepare('SELECT p.display_name,r.run_id,r.points,r.wins,r.draws,r.losses,r.goal_difference,r.formation,r.rating_mode,r.xi_rating,r.created_at FROM verified_runs r LEFT JOIN profiles p ON p.user_id=r.user_id WHERE r.mode=? ORDER BY r.points DESC,r.wins DESC,r.goal_difference DESC,r.created_at ASC LIMIT 100').bind(mode).all();return json({entries:rows.results||[],tieBreak:['points','wins','goal difference','earliest completion'],verifiedOnly:true});}
-async function profile(request,env){const uid=await ensureProfile(env.DB,request);if(!uid)return error('SIGN_IN_REQUIRED','Sign in with ChatGPT to view your cabinet.',401);const profile=await env.DB.prepare('SELECT display_name,created_at FROM profiles WHERE user_id=?').bind(uid).first(),runs=await env.DB.prepare('SELECT run_id,points,wins,draws,losses,formation,rating_mode,created_at FROM verified_runs WHERE user_id=? ORDER BY created_at DESC LIMIT 20').bind(uid).all(),trophies=await env.DB.prepare('SELECT trophy_id,run_id,earned_at FROM trophies WHERE user_id=? ORDER BY earned_at DESC').bind(uid).all();return json({profile,runs:runs.results||[],trophies:trophies.results||[]});}
-async function updateProfile(request,env){const uid=await ensureProfile(env.DB,request);if(!uid)return error('SIGN_IN_REQUIRED','Sign in is required.',401);const name=safeName((await parse(request)).displayName);if(name.length<3)return error('INVALID_NAME','Use 3–24 characters.',422);await env.DB.prepare('UPDATE profiles SET display_name=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?').bind(name,uid).run();return json({displayName:name});}
+async function leaderboard(env, url) {
+  const mode = url.searchParams.get("mode") || "ranked_archive",
+    rows = await env.DB.prepare(
+      "SELECT p.display_name,r.run_id,r.points,r.wins,r.draws,r.losses,r.goal_difference,r.formation,r.rating_mode,r.xi_rating,r.created_at FROM verified_runs r LEFT JOIN profiles p ON p.user_id=r.user_id WHERE r.mode=? ORDER BY r.points DESC,r.wins DESC,r.goal_difference DESC,r.created_at ASC LIMIT 100",
+    )
+      .bind(mode)
+      .all();
+  return json({
+    entries: rows.results || [],
+    tieBreak: ["points", "wins", "goal difference", "earliest completion"],
+    verifiedOnly: true,
+  });
+}
+async function profile(request, env) {
+  const uid = await ensureProfile(env.DB, request);
+  if (!uid)
+    return error(
+      "SIGN_IN_REQUIRED",
+      "Sign in with ChatGPT to view your cabinet.",
+      401,
+    );
+  const profile = await env.DB.prepare(
+      "SELECT display_name,created_at FROM profiles WHERE user_id=?",
+    )
+      .bind(uid)
+      .first(),
+    runs = await env.DB.prepare(
+      "SELECT run_id,points,wins,draws,losses,formation,rating_mode,created_at FROM verified_runs WHERE user_id=? ORDER BY created_at DESC LIMIT 20",
+    )
+      .bind(uid)
+      .all(),
+    trophies = await env.DB.prepare(
+      "SELECT trophy_id,run_id,earned_at FROM trophies WHERE user_id=? ORDER BY earned_at DESC",
+    )
+      .bind(uid)
+      .all();
+  return json({
+    profile,
+    runs: runs.results || [],
+    trophies: trophies.results || [],
+  });
+}
+async function updateProfile(request, env) {
+  const uid = await ensureProfile(env.DB, request);
+  if (!uid) return error("SIGN_IN_REQUIRED", "Sign in is required.", 401);
+  const name = safeName((await parse(request)).displayName);
+  if (name.length < 3)
+    return error("INVALID_NAME", "Use 3–24 characters.", 422);
+  await env.DB.prepare(
+    "UPDATE profiles SET display_name=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",
+  )
+    .bind(name, uid)
+    .run();
+  return json({ displayName: name });
+}
 
-async function api(request,env,url){if(!env.DB)return error('DATABASE_UNAVAILABLE','Competitive services are temporarily unavailable.',503);if(request.method!=='GET'&&request.headers.get('origin')&&request.headers.get('origin')!==url.origin)return error('ORIGIN_REJECTED','Cross-origin writes are blocked.',403);const path=url.pathname;if(path==='/api/v1/capabilities')return json({ranked:true,profiles:true,leaderboards:true,trophies:true,serverVerified:true,multiplayer:false,engineVersion:ENGINE_VERSION,dataCoverage:{cards:cards.length,provenance:'partial-editorial'}});if(path==='/api/v1/runs'&&request.method==='POST')return createRun(request,env);const match=path.match(/^\/api\/v1\/runs\/([^/]+)\/(spin|pick|lock)$/);if(match&&request.method==='POST')return match[2]==='lock'?lockRun(request,env,match[1]):mutateRun(request,env,match[1],match[2]);if(path==='/api/v1/leaderboard'&&request.method==='GET')return leaderboard(env,url);if(path==='/api/v1/me'&&request.method==='GET')return profile(request,env);if(path==='/api/v1/me'&&request.method==='PATCH')return updateProfile(request,env);return error('NOT_FOUND','API route not found.',404);}
+async function api(request, env, url) {
+  if (!env.DB)
+    return error(
+      "DATABASE_UNAVAILABLE",
+      "Competitive services are temporarily unavailable.",
+      503,
+    );
+  if (
+    request.method !== "GET" &&
+    request.headers.get("origin") &&
+    request.headers.get("origin") !== url.origin
+  )
+    return error("ORIGIN_REJECTED", "Cross-origin writes are blocked.", 403);
+  const path = url.pathname;
+  if (path === "/api/v1/capabilities") {
+    const rankedReady = Boolean(env.RUN_SEED_KEY && env.SCORE_RECEIPT_KEY);
+    return json({
+      ranked: rankedReady,
+      profiles: true,
+      leaderboards: true,
+      trophies: true,
+      serverVerified: rankedReady,
+      multiplayer: false,
+      engineVersion: ENGINE_VERSION,
+      dataCoverage: { cards: cards.length, provenance: "partial-editorial" },
+    });
+  }
+  if (path === "/api/v1/runs" && request.method === "POST")
+    return createRun(request, env);
+  const match = path.match(/^\/api\/v1\/runs\/([^/]+)\/(spin|pick|lock)$/);
+  if (match && request.method === "POST")
+    return match[2] === "lock"
+      ? lockRun(request, env, match[1])
+      : mutateRun(request, env, match[1], match[2]);
+  if (path === "/api/v1/leaderboard" && request.method === "GET")
+    return leaderboard(env, url);
+  if (path === "/api/v1/me" && request.method === "GET")
+    return profile(request, env);
+  if (path === "/api/v1/me" && request.method === "PATCH")
+    return updateProfile(request, env);
+  return error("NOT_FOUND", "API route not found.", 404);
+}
 
-export default {async fetch(request,env){try{const url=new URL(request.url);if(url.pathname.startsWith('/api/'))return await api(request,env,url);const embedded=staticAssets[url.pathname];if(embedded)return new Response(embedded.body,{headers:{'content-type':embedded.type,'cache-control':url.pathname==='/'||url.pathname==='/index.html'?'no-cache':'public, max-age=31536000, immutable'}});const response=await env.ASSETS.fetch(request);if(response.status!==404)return response;return new Response('Not found',{status:404});}catch(cause){console.error(cause);return error('SERVER_ERROR','The server could not complete that request.',500)}}};
+export default {
+  async fetch(request, env) {
+    try {
+      const url = new URL(request.url);
+      if (url.pathname.startsWith("/api/")) return await api(request, env, url);
+      const embedded = staticAssets[url.pathname];
+      if (embedded)
+        return new Response(embedded.body, {
+          headers: {
+            "content-type": embedded.type,
+            "cache-control":
+              url.pathname === "/" || url.pathname === "/index.html"
+                ? "no-cache"
+                : "public, max-age=31536000, immutable",
+          },
+        });
+      const response = await env.ASSETS.fetch(request);
+      if (response.status !== 404) return response;
+      return new Response("Not found", { status: 404 });
+    } catch (cause) {
+      console.error(cause);
+      return error(
+        "SERVER_ERROR",
+        "The server could not complete that request.",
+        500,
+      );
+    }
+  },
+};
