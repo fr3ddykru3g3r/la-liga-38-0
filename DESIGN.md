@@ -1,9 +1,9 @@
-# Design direction — JORNADA // XI
+# Design direction — La Liga XI
 
 - **Purpose:** settle all-time Spanish top-flight XI arguments through a short, replayable draft puzzle.
 - **Tone:** editorial sports archive × industrial match-control room.
-- **Signature:** a 38-tick Jornada Dial that docks a club-season dossier beside a chalk formation board.
-- **Domain:** jornada, once, vestuario, derbi, cantera, title race, matchday ledger.
+- **Signature:** a 38-tick Matchday Dial that docks a club-season dossier beside a chalk formation board.
+- **Domain:** XI, title race, scouting dossier, formation board, and matchday ledger.
 - **Color world:** pitch-night, chalk, floodlight yellow, Rioja red, Mediterranean blue, archival paper.
 - **DFII:** impact 5 + fit 5 + feasibility 4 + performance 4 − consistency risk 3 = **15/15**.
 - **Typography:** Archivo Narrow for compressed matchday display; Atkinson Hyperlegible for controls and tables.
