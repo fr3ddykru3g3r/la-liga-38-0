@@ -168,13 +168,19 @@ const curatedPlayers = rows.map((row, index) => {
 const clubNames = {
   'real-madrid':'Real Madrid','barcelona':'Barcelona','atletico-madrid':'Atlético Madrid',
   'valencia':'Valencia','sevilla':'Sevilla','villarreal':'Villarreal','athletic-club':'Athletic Club',
-  'deportivo':'Deportivo','real-sociedad':'Real Sociedad','real-betis':'Real Betis','mallorca':'Mallorca',
-  'espanyol':'Espanyol','osasuna':'Osasuna','celta-vigo':'Celta Vigo','getafe':'Getafe','levante':'Levante',
-  'malaga':'Málaga','rayo-vallecano':'Rayo Vallecano','alaves':'Alavés'
+  'deportivo':'Deportivo','real-sociedad':'Real Sociedad','real-betis':'Real Betis',
+  'celta-vigo':'Celta de Vigo','espanyol':'RCD Espanyol','osasuna':'CA Osasuna','mallorca':'RCD Mallorca',
+  'malaga':'Málaga CF','getafe':'Getafe CF','levante':'Levante UD','rayo-vallecano':'Rayo Vallecano',
+  'alaves':'Deportivo Alavés','sporting-gijon':'Sporting Gijón','las-palmas':'UD Las Palmas',
+  'girona':'Girona FC','eibar':'SD Eibar','elche':'Elche CF','cadiz':'Cádiz CF','leganes':'CD Leganés',
+  'huesca':'SD Huesca','granada':'Granada CF','almeria':'UD Almería','valladolid':'Real Valladolid',
+  'zaragoza':'Real Zaragoza','racing-santander':'Racing Santander','xerez':'Xerez CD',
+  'albacete':'Albacete Balompié','oviedo':'Real Oviedo'
 };
-const normalizePosition = position => ({AM:'CAM',DM:'CDM',FW:'ST',F:'ST',M:'CM'}[position] || position);
+const normalizePosition = position => ({AM:'CAM',DM:'CDM',FW:'ST',F:'ST',FC:'ST',M:'CM',MF:'CM',FB:'RB'}[position] || position);
 const rawArchive = Object.entries({...RAW1,...RAW2,...RAW3,...RAW4,...RAW5}).flatMap(([key, squad], groupIndex) => {
   const [clubId, yearText] = key.split('|');
+  if (!clubNames[clubId]) return [];
   const year = Number(yearText) >= 90 ? 1900 + Number(yearText) : 2000 + Number(yearText);
   const season = `${year}/${String((year + 1) % 100).padStart(2,'0')}`;
   return squad.map((record, cardIndex) => {
@@ -193,7 +199,7 @@ for (const player of [...rawArchive,...curatedPlayers]) {
   const existing=byCard.get(key);
   if(!existing || player.rating>existing.rating) byCard.set(key,{...player,prime:peakByPlayer.get(player.playerId)});
 }
-export const players = [...byCard.values()];
+export const players = [...byCard.values()].map(p => ({...p, club: p.club === 'Mallorca' ? 'RCD Mallorca' : p.club}));
 
 export const clubs = [...new Set(players.map(p => p.club))].sort();
 export const seasons = [...new Set(players.map(p => p.season))].sort();
@@ -212,14 +218,7 @@ export const formations = {
   '4-3-3': ['GK','RB','CB','CB','LB','CM','CM','CM','RW','ST','LW'],
   '4-4-2': ['GK','RB','CB','CB','LB','RM','CM','CM','LM','ST','ST'],
   '4-2-3-1': ['GK','RB','CB','CB','LB','CDM','CDM','RW','CAM','LW','ST'],
-  '4-5-1': ['GK','RB','CB','CB','LB','RM','CM','CDM','CM','LM','ST'],
-  '4-1-4-1': ['GK','RB','CB','CB','LB','CDM','RM','CM','CM','LM','ST'],
-  '4-3-1-2': ['GK','RB','CB','CB','LB','CM','CDM','CM','CAM','ST','ST'],
-  '4-4-1-1': ['GK','RB','CB','CB','LB','RM','CM','CM','LM','CAM','ST'],
-  '4-2-2-2': ['GK','RB','CB','CB','LB','CDM','CDM','CAM','CAM','ST','ST'],
-  '3-4-3': ['GK','CB','CB','CB','RM','CM','CM','LM','RW','ST','LW'],
   '3-5-2': ['GK','CB','CB','CB','RWB','CM','CDM','CM','LWB','ST','ST'],
-  '5-4-1': ['GK','RWB','CB','CB','CB','LWB','RM','CM','CM','LM','ST'],
   '4-1-2-1-2': ['GK','RB','CB','CB','LB','CDM','CM','CM','CAM','ST','ST'],
   '5-3-2': ['GK','RWB','CB','CB','CB','LWB','CM','CM','CM','ST','ST']
 };
